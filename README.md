@@ -1,6 +1,6 @@
 
 # simple-crawler
-simple web crawler to use in Digikala's black friday contest.
+Simple web crawler to use in Digikala's black friday contest.
 
 # The contest
 
@@ -13,9 +13,10 @@ I decided to write a crawler so that I could quickly download the photos of all 
 Assuming you are visiting this page:
 https://www.digikala.com/product/dkp-6520212
 By using inspect element I found needed data here:
-
-    <script type="application/ld+json"> {
-    "@context": "https://www.schema.org",
+```html
+<script type="application/ld+json">
+{
+  "@context": "https://www.schema.org",
     "@type": "Product",
     "name": "کوله پشتی گوگانا مدل 4029DBL",
     "alternateName": null,
@@ -81,133 +82,140 @@ By using inspect element I found needed data here:
             "worstRating": 0
         }
     }
-} </script>
-
+}
+</script>
+```
 
 ### Getting image URLs
 
 Here is the crawler to parsing the element and saving image URLs to array:
+```node
+ const c = new Crawler({
+    maxConnections: 20,
+    rateLimit: 10,
+    callback: (error, res, done) => {
+        if (error) {
+            console.log(error);
+        } else {
+            const $ = res.$;
+            const url = res.request.uri.href;
+            const id = url.substring(url.lastIndexOf('/') + 1).replace('dkp-','');
+            console.log(id);
 
-    const c = new Crawler({
-	    maxConnections: 20,
-	    rateLimit: 10,
-	    callback: (error, res, done) => {
-	        if (error) {
-	            console.log(error);
-	        } else {
-	            const $ = res.$;
-	            const url = res.request.uri.href;
-	            const id = url.substring(url.lastIndexOf('/') + 1).replace('dkp-','');
-	            console.log(id);
-
-	            const x = $('script[type="application/ld+json"]');
-	            if (x != null) {
-	                const data = x[0]['children'][0].data;
-	                const json = JSON.parse(data);
-	                const images = json.image;
-	                if (images.length > 0) {
-	                    const l = images[images.length-1];
-	                    var one = l.substring(0, l.indexOf('?'))
-	                    var imageUrl = one.substring(one.lastIndexOf('/') + 1);
-	                    array.push(imageUrl);
-	                } else { 
-	                    console.log("* skipping: ", res.request.uri.href);
-	                }
-	            } else { 
-	                console.log("* skipping: ", res.request.uri.href);
-	            }
-	        } 
-	        done();
-	    }
-    });
+            const x = $('script[type="application/ld+json"]');
+            if (x != null) {
+                const data = x[0]['children'][0].data;
+                const json = JSON.parse(data);
+                const images = json.image;
+                if (images.length > 0) {
+                    const l = images[images.length-1];
+                    var one = l.substring(0, l.indexOf('?'))
+                    var imageUrl = one.substring(one.lastIndexOf('/') + 1);
+                    array.push(imageUrl);
+                } else { 
+                    console.log("* skipping: ", res.request.uri.href);
+                }
+            } else { 
+                console.log("* skipping: ", res.request.uri.href);
+            }
+        } 
+        done();
+    }
+});
+```
 
 Things to mention:
- - some products have a single image, so checking length is to skip them, because I was sure they will not adding discount code there!
- - removed filters applied to images, by removing query string from URLs. e.g : (`x-oss-process=image/resize,h_1600/quality,q_80/watermark,image_ZGstdy8xLnBuZw==,t_90,g_nw,x_15,y_15`)
+ - Some products have a single image, so checking length is to skip them, because I was sure they will not adding discount code there!
+ - Removed filters applied to images, by removing query string from URLs. e.g : (`x-oss-process=image/resize,h_1600/quality,q_80/watermark,image_ZGstdy8xLnBuZw==,t_90,g_nw,x_15,y_15`)
 
 
 ### Saving URLs
 At the end of fetching all URLs, saved them to JSON file:
-
-    fs.writeFile("objects.json", JSON.stringify(array), function(err) {
-	    if (err) {
-	        console.log(err);
-	    }
-    });
+```node
+fs.writeFile("objects.json", JSON.stringify(array), function(err) {
+    if (err) {
+        console.log(err);
+    }
+});
+```
 
 ## List of products
 In the previous step, I was able to successfully save all the photos of the products. But the more important question was how to navigate between product pages and save their links?
 So I wrote a more general script that crawls all the pages and prepares for the previous script so that it can run separately for each product:
+```node
+var WriteStream  = fs.createWriteStream("products.txt", "UTF-8");
 
-    var WriteStream  = fs.createWriteStream("products.txt", "UTF-8");
-    
-	const c = new Crawler({
-	    maxConnections: 10,
-	    rateLimit: 1000,
-    
-	    callback: (error, res, done) => {
-	        if (error) {
-	            console.log(error);
-	        } else {
-	            console.log("finding products of page " + res.request.uri.href);
-	            const $ = res.$;
-	            const links = $('a[class="c-product-box__img c-promotion-box__image js-url js-product-item js-product-url"]');
-	            links.each(function(index, link) {
-	                const id = link['attribs']['data-adro-ad-click-id'];
-	                const x = "https://www.digikala.com/product/dkp-" + id;
-	                WriteStream.write(x);
-	                WriteStream.write(",");
-	            });
-		     }
-	        done();
-	    }
-    });
+const c = new Crawler({
+    maxConnections: 10,
+    rateLimit: 1000,
+
+    callback: (error, res, done) => {
+        if (error) {
+            console.log(error);
+        } else {
+            console.log("finding products of page " + res.request.uri.href);
+            const $ = res.$;
+            const links = $('a[class="c-product-box__img c-promotion-box__image js-url js-product-item js-product-url"]');
+            links.each(function(index, link) {
+                const id = link['attribs']['data-adro-ad-click-id'];
+                const x = "https://www.digikala.com/product/dkp-" + id;
+                WriteStream.write(x);
+                WriteStream.write(",");
+            });
+	     }
+        done();
+    }
+});
+```
 
 Things to mention:
 
- - here is how I generated all pages URL:
- `var links = [];
+ - Here is how I generated all pages URL:
+```node
+var links = [];
 Array.from({length: 46}, (_, i) => i + 1).forEach(page => {  
   links.push(`https://www.digikala.com/treasure-hunt/products/?pageno=${page}`);  
 });
-c.queue(links);`
+c.queue(links);
+```
 
 ### Downloading images
 To download the photos, I used different methods, each with a different scenario:
 
 #### 1. Downloading all URLs from a file:
-
-    const c = new Crawler({
-	    encoding: null,
-	    jQuery: false,
-	    maxConnections: 50,
-	    rateLimit: 0,
-	    callback: (error, res, done) => {
-	        console.log(res.request.uri.href);
-	        if (error) {
-	            console.log(error);
-	        } else {
-	            const url = res.options.uri.substring(0, res.options.uri.indexOf('?'));
-	            const filename = url.substring(url.lastIndexOf('/') + 1);
-	            fs.createWriteStream(filename).write(res.body);
-	        }
-	        done();
-	    }
-    });
-    
-    try {  
-	    var text = fs.readFileSync('urls.txt', 'utf8').toString();
-	    var links = text.split(",");
-	    links = links.map(function(l) {
-	        return l + "?x-oss-process=image/resize,h_500/quality,q_10";
-	    });
-
-	    console.log("\n\n" + links.length + " images to download..." + "\n");
-	    c.queue(links);
-	}
-	catch(e) {
-		console.log('Error:', e.stack);
+```node
+const c = new Crawler({
+    encoding: null,
+    jQuery: false,
+    maxConnections: 50,
+    rateLimit: 0,
+    callback: (error, res, done) => {
+        console.log(res.request.uri.href);
+        if (error) {
+            console.log(error);
+        } else {
+            const url = res.options.uri.substring(0, res.options.uri.indexOf('?'));
+            const filename = url.substring(url.lastIndexOf('/') + 1);
+            fs.createWriteStream(filename).write(res.body);
+        }
+        done();
     }
+});
+
+try {  
+    var text = fs.readFileSync('urls.txt', 'utf8').toString();
+    var links = text.split(",");
+    links = links.map(function(l) {
+        return l + "?x-oss-process=image/resize,h_500/quality,q_10";
+    });
+
+    console.log("\n\n" + links.length + " images to download..." + "\n");
+    c.queue(links);
+}
+catch(e) {
+	console.log('Error:', e.stack);
+}
+```
 
 Things to mention:
 
@@ -220,19 +228,19 @@ Things to mention:
 As mentioned above, I had to wait a long time for the links to be received. So I solved this problem, at the same time I was looking at the downloaded images and the script was crawling a new product.
 
 I just added this line instead of saving image URLs of the product to a file in first script:
-
-    if (images.length > 0) {
-	    const links = [images[images.length-1]].map(function(l) {
-		    return l.substring(0, l.indexOf('?')) + "?x-oss-process=image/resize,h_500/quality,q_10";
-	     });
-	     console.log(links);
-	     download(links, dest)
-	     .then(result => {
-		    console.log(result);   
-	    })
-	    .catch(error => console.log("downloaded error", error))
-    }
-
+```node
+if (images.length > 0) {
+    const links = [images[images.length-1]].map(function(l) {
+	    return l.substring(0, l.indexOf('?')) + "?x-oss-process=image/resize,h_500/quality,q_10";
+     });
+     console.log(links);
+     download(links, dest)
+     .then(result => {
+	    console.log(result);   
+    })
+    .catch(error => console.log("downloaded error", error))
+}
+```
 
 
 # Conclusion
